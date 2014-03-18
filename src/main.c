@@ -10,6 +10,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <ctype.h>
+#include "uthash.h"
 
 typedef struct commands commandList;
 commandList* cmdList = NULL;
@@ -31,7 +32,18 @@ wordNode* word = NULL;
 struct word {
 
 	char string[50];
+	int wordCount;
 
+	UT_hash_handle hh;
+};
+
+typedef struct file fileNode;
+fileNode* filesHead = NULL;
+
+struct file {
+
+	char filename[50];
+	fileNode* next;
 };
 
 void parseArgs(int argc, char *argv[]) {
@@ -70,18 +82,73 @@ void parseArgs(int argc, char *argv[]) {
 	}
 }
 
-void map() {
-
+void map(int numMaps) {
 
 }
 
-void reduce() {
+void reduce(int numReduce) {
 
+}
+
+void printFileList() {
+
+	fileNode* ptr = filesHead;
+
+	while (ptr != NULL) {
+
+		printf("%s\n", ptr->filename);
+		ptr = ptr->next;
+	}
+}
+
+void getFilesToProcess(char* dirName) {
+
+	DIR* dir = opendir(dirName);
+	struct dirent* file;
+
+	if (dir) {
+
+		while ((file = readdir(dir)) != NULL) {
+
+			//	printf("%s\n", file->d_name);
+
+			if (file->d_type == DT_REG) {
+
+				if (filesHead == NULL) {
+
+					filesHead = malloc(sizeof(fileNode));
+					strcpy(filesHead->filename, file->d_name);
+				}
+
+				else {
+
+					fileNode* toAdd = malloc(sizeof(fileNode));
+					fileNode* ptr = filesHead;
+					fileNode* prev = NULL;
+
+					while (ptr != NULL) {
+
+						prev = ptr;
+						ptr = ptr->next;
+
+					}
+
+					strcpy(toAdd->filename, file->d_name);
+					prev->next = toAdd;
+				}
+			}
+		}
+
+		closedir(dir);
+	}
+
+	printFileList();
 
 }
 
 void wordCount() {
 
+	getFilesToProcess("wordcount");
 
 }
 
@@ -117,6 +184,11 @@ int main(int argc, char *argv[]) {
 
 	parseArgs(argc, argv);
 	printCommandList();
+
+	if (strcmp(cmdList->applicationType, "wordcount") == 0) {
+
+		wordCount();
+	}
 
 	return 0;
 }
