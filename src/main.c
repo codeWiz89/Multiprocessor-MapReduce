@@ -12,6 +12,12 @@
 #include <ctype.h>
 #include "uthash.h"
 
+void parseArgs(int argc, char *argv[]);
+void map(int numMaps, char* applicationType);
+void reduce(int numReduce);
+void getFilesToProcess(char* dirName);
+void wordCount(int numMaps);
+
 typedef struct commands commandList;
 commandList* cmdList = NULL;
 
@@ -82,8 +88,12 @@ void parseArgs(int argc, char *argv[]) {
 	}
 }
 
-void map(int numMaps) {
+void map(int numMaps, char* applicationType) {
 
+	if (strcmp(applicationType, "wordcount") == 0) {
+
+		wordCount(numMaps);
+	}
 }
 
 void reduce(int numReduce) {
@@ -146,9 +156,22 @@ void getFilesToProcess(char* dirName) {
 
 }
 
-void wordCount() {
+void wordCount(int numMaps) {
 
 	getFilesToProcess("wordcount");
+
+}
+
+void wordCount_helper() {
+
+	/*	FILE* file = fopen(fileName, "r");
+		char line[100] = { 0 };
+
+		while (fgets(line, sizeof(line), file) != NULL) { //read line by line
+
+			printf("%s\n", line);
+
+		} */
 
 }
 
@@ -187,7 +210,8 @@ int main(int argc, char *argv[]) {
 
 	if (strcmp(cmdList->applicationType, "wordcount") == 0) {
 
-		wordCount();
+		map(cmdList->numMaps, "wordcount");
+
 	}
 
 	return 0;
