@@ -32,7 +32,7 @@ typedef struct word wordNode;
 struct word {
 
 	char string[50];
-	int wordCount;
+	int freq;
 
 	UT_hash_handle hh;
 };
@@ -46,8 +46,6 @@ struct alphaChar {
 
 	UT_hash_handle hh;
 };
-
-wordNode** allHMaps = NULL;
 
 typedef struct file fileNode;
 fileNode* filesHead = NULL;
@@ -63,9 +61,11 @@ argsNode* argsHead = NULL;
 
 struct args {
 
-	int loR;
-	int hiR;
-	int hmIndex;
+	char fileName[50];
+	wordNode* wordHMap;
+
+	argsNode* next;
+
 };
 
 void parseArgs(int argc, char *argv[]);
@@ -74,7 +74,6 @@ void reduce(int numReduce);
 void getFilesToProcess(char* dirName);
 void wordCount(int numMaps);
 void* wordCount_helper(void* args);
-int checkRange(int loR, int hiR, char toCheck);
 
 void parseArgs(int argc, char *argv[]) {
 
@@ -192,22 +191,41 @@ void wordCount(int numMaps) {
 	int ret = 0;
 	int threads = numMaps;
 	pthread_t* thread = malloc(sizeof(pthread_t) * threads);
+
 	fileNode* ptr = filesHead;
 
-	allHMaps = malloc(sizeof(wordNode) * numMaps);
-
-	for (i = 0; i < numMaps; i++) {
-
-		wordNode* temp = malloc(sizeof(wordNode));
-		allHMaps[i] = temp;
-	}
+	argsNode* head = NULL;
 
 	for (i = 0; i < threads; i++) {
 
 		argsNode* tmpArgs = malloc(sizeof(argsNode));
-		tmpArgs->hmIndex = i;
+		wordNode* temp = NULL;
+
+		strcpy(tmpArgs->fileName, ptr->filename);
+		tmpArgs->wordHMap = temp;
 
 		ret = pthread_create(&thread[i], NULL, wordCount_helper, tmpArgs);
+
+		if (head == NULL) {
+
+			head = tmpArgs;
+			head->next = NULL;
+		}
+
+		else {
+
+			argsNode* ptr = head;
+			argsNode* prev = NULL;
+
+			while (ptr != NULL) {
+
+				prev = ptr;
+				ptr = ptr->next;
+
+			}
+
+			prev->next = tmpArgs;
+		}
 
 		if (ret != 0) {
 
@@ -222,75 +240,82 @@ void wordCount(int numMaps) {
 
 		pthread_join(thread[i], NULL);
 	}
+
+	argsNode* Aptr = head;
+
+	while (Aptr != NULL) {
+
+		wordNode* ptr;
+
+		printf("********filename: %s********\n", Aptr->fileName);
+
+		for (ptr = Aptr->wordHMap; ptr != NULL; ptr = ptr->hh.next) {
+
+			printf("Word: %s Count: %d\n", ptr->string, ptr->freq);
+
+		}
+
+		printf("********filename: %s********\n", Aptr->fileName);
+
+		Aptr = Aptr->next;
+
+	}
 }
 
 void* wordCount_helper(void* args) {
 
 	argsNode* tempArgs = (argsNode*) args;
 
-//	printf("filename: %s\n", fileName);
-//	printf("index: %d\n", index);
+	char* fileName = tempArgs->fileName;
+	wordNode* wordHM = tempArgs->wordHMap;
 
-	/*	FILE* file = fopen(fileName, "r");
-	 char line[1000] = { 0 };
+//	printf("********filename: %s\n********", fileName);
 
+	FILE* file = fopen(fileName, "r");
+	char line[1000] = { 0 };
+	char* word;
+	wordNode* toFind;
 
-	 while (fgets(line, sizeof(line), file) != NULL) { //read line by line
+	while (!feof(file)) {
 
-	 char * word;
-	 word = strtok(line, " ");
+		fgets(line, sizeof(line), file);
+		word = strtok(line, " ");
 
-	 while (word != NULL) {
+		while (word != NULL) {
 
+			HASH_FIND_STR(wordHM, word, toFind);
 
-	 word = strtok(NULL, " ");
-	 }
-	 }
+			if (toFind) {
 
-	 */
+				toFind->freq += 1;
 
-	return 0;
-}
+			}
 
-int* getRange(int numMaps) {
+			else {
 
-	int* result = malloc(2 * numMaps);
-	int alphaCount = 26;
-	int count = 2;
+				wordNode* toAdd = malloc(sizeof(wordNode));
+				strcpy(toAdd->string, word);
+				toAdd->freq = 1;
 
-	int d = 26 / numMaps;
+				HASH_ADD_STR(wordHM, string, toAdd);
 
-	result[0] = 0;
-	result[1] = d - 1;
+				/*	wordNode* ptr;
 
-	while (count < 2 * numMaps) {
+				 for (ptr = wordHM; ptr != NULL; ptr = ptr->hh.next) {
 
-		if (count % 2 == 0) {
+				 printf("Word: %s Count: %d\n", ptr->string, ptr->freq);
 
-			result[count] = result[count - 1] + 1;
+				 } */
+			}
 
-		}
-
-		else if ((2 * numMaps) - count == 1) {
-
-			result[count] = alphaCount - 1;
-		}
-
-		else {
-
-			result[count] = result[count - 1] + (d - 1);
+			word = strtok(NULL, " ");
 
 		}
-
-		count++;
 	}
 
-	return result;
-}
+	tempArgs->wordHMap = wordHM;
 
-int checkRange(int loR, int hiR, char toCheck) {
-
-	return -1;
+	return 0;
 }
 
 void printCommandList() {
