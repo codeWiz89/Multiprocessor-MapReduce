@@ -37,6 +37,16 @@ struct word {
 	UT_hash_handle hh;
 };
 
+typedef struct alphaChar alphaCharNode;
+
+struct alphaChar {
+
+	char c;
+	int index;
+
+	UT_hash_handle hh;
+};
+
 wordNode** allHMaps = NULL;
 
 typedef struct file fileNode;
@@ -53,8 +63,9 @@ argsNode* argsHead = NULL;
 
 struct args {
 
-	char filename[50];
-	int index;
+	int loR;
+	int hiR;
+	int hmIndex;
 };
 
 void parseArgs(int argc, char *argv[]);
@@ -63,9 +74,7 @@ void reduce(int numReduce);
 void getFilesToProcess(char* dirName);
 void wordCount(int numMaps);
 void* wordCount_helper(void* args);
-
-int result[3];
-pthread_mutex_t cd_lock;
+int checkRange(int loR, int hiR, char toCheck);
 
 void parseArgs(int argc, char *argv[]) {
 
@@ -180,12 +189,10 @@ void wordCount(int numMaps) {
 	getFilesToProcess("wordcount");
 
 	int i;
-	int ret = 0, index = 0;
+	int ret = 0;
 	int threads = numMaps;
 	pthread_t* thread = malloc(sizeof(pthread_t) * threads);
 	fileNode* ptr = filesHead;
-
-	pthread_mutex_init(&cd_lock, NULL);
 
 	allHMaps = malloc(sizeof(wordNode) * numMaps);
 
@@ -195,15 +202,10 @@ void wordCount(int numMaps) {
 		allHMaps[i] = temp;
 	}
 
-
 	for (i = 0; i < threads; i++) {
 
 		argsNode* tmpArgs = malloc(sizeof(argsNode));
-		strcpy(tmpArgs->filename, ptr->filename);
-		tmpArgs->index = index++;
-
-		//	ret = pthread_create(&thread[i], NULL, wordCount_helper, ptr->filename);
-		//	ret = pthread_create(&thread[i], NULL, wordCount_helper, args);
+		tmpArgs->hmIndex = i;
 
 		ret = pthread_create(&thread[i], NULL, wordCount_helper, tmpArgs);
 
@@ -220,48 +222,75 @@ void wordCount(int numMaps) {
 
 		pthread_join(thread[i], NULL);
 	}
-
-	for (i = 0; i < threads; i++) {
-
-		printf("%d\n", result[i]);
-	}
 }
 
 void* wordCount_helper(void* args) {
 
 	argsNode* tempArgs = (argsNode*) args;
-	char* fileName = tempArgs->filename;
-	int index = tempArgs->index;
 
 //	printf("filename: %s\n", fileName);
 //	printf("index: %d\n", index);
 
-	FILE* file = fopen(fileName, "r");
-	char line[1000] = { 0 };
+	/*	FILE* file = fopen(fileName, "r");
+	 char line[1000] = { 0 };
 
-	int wordCount = 0;
 
-	pthread_mutex_lock(&cd_lock);
+	 while (fgets(line, sizeof(line), file) != NULL) { //read line by line
 
-	while (fgets(line, sizeof(line), file) != NULL) { //read line by line
+	 char * word;
+	 word = strtok(line, " ");
 
-		char * word;
-		word = strtok(line, " ");
+	 while (word != NULL) {
 
-		while (word != NULL) {
 
-			wordCount++;
-		//	printf("word: %s count: %d\n", word, wordCount);
-			word = strtok(NULL, " ");
-		}
-	}
+	 word = strtok(NULL, " ");
+	 }
+	 }
 
-	pthread_mutex_unlock(&cd_lock);
-
-	result[index] = wordCount;
-
+	 */
 
 	return 0;
+}
+
+int* getRange(int numMaps) {
+
+	int* result = malloc(2 * numMaps);
+	int alphaCount = 26;
+	int count = 2;
+
+	int d = 26 / numMaps;
+
+	result[0] = 0;
+	result[1] = d - 1;
+
+	while (count < 2 * numMaps) {
+
+		if (count % 2 == 0) {
+
+			result[count] = result[count - 1] + 1;
+
+		}
+
+		else if ((2 * numMaps) - count == 1) {
+
+			result[count] = alphaCount - 1;
+		}
+
+		else {
+
+			result[count] = result[count - 1] + (d - 1);
+
+		}
+
+		count++;
+	}
+
+	return result;
+}
+
+int checkRange(int loR, int hiR, char toCheck) {
+
+	return -1;
 }
 
 void printCommandList() {
