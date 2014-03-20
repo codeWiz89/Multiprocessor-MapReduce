@@ -36,6 +36,7 @@ struct word {
 
 	UT_hash_handle hh;
 };
+wordNode* finalMap = NULL;
 
 typedef struct alphaChar alphaCharNode;
 
@@ -63,17 +64,23 @@ struct args {
 
 	char fileName[50];
 	wordNode* wordHMap;
-
 	argsNode* next;
 
 };
 
 void parseArgs(int argc, char *argv[]);
 void map(int numMaps, char* applicationType);
-void reduce(int numReduce);
+void reduce(int numReduce, char* applicationType);
 void getFilesToProcess(char* dirName);
-void wordCount(int numMaps);
-void* wordCount_helper(void* args);
+void wordCount_map(int numMaps);
+void wordCount_reduce(int numReduce);
+void* wordCount_mapH(void* args);
+void printFileList();
+void* wordCount_reduceH(void* args);
+void* wordCount_reduceH_S();
+int sort_by_name(wordNode*a, wordNode* b);
+
+pthread_mutex_t cd_lock;
 
 void parseArgs(int argc, char *argv[]) {
 
@@ -115,23 +122,17 @@ void map(int numMaps, char* applicationType) {
 
 	if (strcmp(applicationType, "wordcount") == 0) {
 
-		wordCount(numMaps);
+		wordCount_map(numMaps);
 	}
 }
 
-void reduce(int numReduce) {
+void reduce(int numReduce, char* applicationType) {
 
-}
+	if (strcmp(applicationType, "wordcount") == 0) {
 
-void printFileList() {
-
-	fileNode* ptr = filesHead;
-
-	while (ptr != NULL) {
-
-		printf("%s\n", ptr->filename);
-		ptr = ptr->next;
+		wordCount_reduce(numReduce);
 	}
+
 }
 
 void getFilesToProcess(char* dirName) {
@@ -179,11 +180,11 @@ void getFilesToProcess(char* dirName) {
 		closedir(dir);
 	}
 
-	printFileList();
+//	printFileList();
 
 }
 
-void wordCount(int numMaps) {
+void wordCount_map(int numMaps) {
 
 	getFilesToProcess("wordcount");
 
@@ -194,8 +195,6 @@ void wordCount(int numMaps) {
 
 	fileNode* ptr = filesHead;
 
-	argsNode* head = NULL;
-
 	for (i = 0; i < threads; i++) {
 
 		argsNode* tmpArgs = malloc(sizeof(argsNode));
@@ -204,17 +203,17 @@ void wordCount(int numMaps) {
 		strcpy(tmpArgs->fileName, ptr->filename);
 		tmpArgs->wordHMap = temp;
 
-		ret = pthread_create(&thread[i], NULL, wordCount_helper, tmpArgs);
+		ret = pthread_create(&thread[i], NULL, wordCount_mapH, tmpArgs);
 
-		if (head == NULL) {
+		if (argsHead == NULL) {
 
-			head = tmpArgs;
-			head->next = NULL;
+			argsHead = tmpArgs;
+			argsHead->next = NULL;
 		}
 
 		else {
 
-			argsNode* ptr = head;
+			argsNode* ptr = argsHead;
 			argsNode* prev = NULL;
 
 			while (ptr != NULL) {
@@ -241,7 +240,7 @@ void wordCount(int numMaps) {
 		pthread_join(thread[i], NULL);
 	}
 
-	argsNode* Aptr = head;
+	argsNode* Aptr = argsHead;
 
 	while (Aptr != NULL) {
 
@@ -258,18 +257,16 @@ void wordCount(int numMaps) {
 		printf("********filename: %s********\n", Aptr->fileName);
 
 		Aptr = Aptr->next;
-
 	}
+
 }
 
-void* wordCount_helper(void* args) {
+void* wordCount_mapH(void* args) {
 
 	argsNode* tempArgs = (argsNode*) args;
 
 	char* fileName = tempArgs->fileName;
 	wordNode* wordHM = tempArgs->wordHMap;
-
-//	printf("********filename: %s\n********", fileName);
 
 	FILE* file = fopen(fileName, "r");
 	char line[1000] = { 0 };
@@ -279,6 +276,14 @@ void* wordCount_helper(void* args) {
 	while (!feof(file)) {
 
 		fgets(line, sizeof(line), file);
+
+		int len = strlen(line);
+
+		if (len > 0 && line[len-1] == '\n') {
+
+			line[len-1] = '\0';
+		}
+
 		word = strtok(line, " ");
 
 		while (word != NULL) {
@@ -311,11 +316,134 @@ void* wordCount_helper(void* args) {
 			word = strtok(NULL, " ");
 
 		}
+
+		memset(line, 0, 1000);
 	}
 
 	tempArgs->wordHMap = wordHM;
 
 	return 0;
+}
+
+void wordCount_reduce(int numReduce) {
+
+	argsNode* Aptr = argsHead;
+	int i, ret;
+
+	if (numReduce == 1) {
+
+		int threads = numReduce;
+		pthread_t* thread = malloc(sizeof(pthread_t) * threads);
+
+		for (i = 0; i < threads; i++) {
+
+			ret = pthread_create(&thread[i], NULL, wordCount_reduceH_S, NULL);
+
+			if (ret != 0) {
+
+				printf("Create pthread error!\n");
+				exit(1);
+			}
+		}
+
+		for (i = 0; i < threads; i++) {
+
+			pthread_join(thread[i], NULL);
+		}
+	}
+
+	else {
+
+		int threads = numReduce;
+		pthread_t* thread = malloc(sizeof(pthread_t) * threads);
+
+		for (i = 0; i < threads; i++) {
+
+			ret = pthread_create(&thread[i], NULL, wordCount_reduceH, Aptr);
+
+			if (ret != 0) {
+
+				printf("Create pthread error!\n");
+				exit(1);
+			}
+
+			Aptr = Aptr->next;
+		}
+
+		for (i = 0; i < threads; i++) {
+
+			pthread_join(thread[i], NULL);
+		}
+	}
+
+	HASH_SRT(hh, finalMap, sort_by_name);
+
+	printf("\n");
+	printf("\n");
+	printf("******printing final map******\n");
+
+	wordNode* tmpS;
+
+	for (tmpS = finalMap; tmpS != NULL; tmpS = tmpS->hh.next) {
+
+		printf("%s %d\n", tmpS->string, tmpS->freq);
+
+	}
+
+	printf("******done printing final map******\n");
+}
+
+void* wordCount_reduceH_S() {
+
+	pthread_mutex_lock(&cd_lock);
+
+	argsNode* Aptr = argsHead;
+	wordNode* tmpPtr;
+	wordNode* toFind = NULL;
+
+	while(Aptr != NULL) {
+
+		wordNode* tmpMap = Aptr->wordHMap;
+
+		for (tmpPtr = tmpMap; tmpPtr != NULL; tmpPtr = tmpPtr->hh.next) {
+
+			char* word = tmpPtr->string;
+
+			HASH_FIND_STR(finalMap, word, toFind);
+
+			if (toFind) {
+
+				toFind->freq += 1;
+
+			}
+
+			else {
+
+				wordNode* toAdd = malloc(sizeof(wordNode));
+				strcpy(toAdd->string, tmpPtr->string);
+				toAdd->freq = tmpPtr->freq;
+
+				HASH_ADD_STR(finalMap, string, toAdd);
+			}
+		}
+
+		Aptr = Aptr->next;
+	}
+
+	pthread_mutex_unlock(&cd_lock);
+
+	return 0;
+}
+
+void* wordCount_reduceH(void* args) {
+
+
+	return 0;
+}
+
+int sort_by_name(wordNode*a, wordNode* b) {
+
+  return strcmp(a->string, b->string);
 }
 
 void printCommandList() {
@@ -328,6 +456,17 @@ void printCommandList() {
 	printf("Output File: %s\n", cmdList->outFile);
 }
 
+void printFileList() {
+
+	fileNode* ptr = filesHead;
+
+	while (ptr != NULL) {
+
+		printf("%s\n", ptr->filename);
+		ptr = ptr->next;
+	}
+}
+
 int main(int argc, char *argv[]) {
 
 	if (argc > 11 || argc < 11) {
@@ -338,11 +477,12 @@ int main(int argc, char *argv[]) {
 	}
 
 	parseArgs(argc, argv);
-	printCommandList();
+//	printCommandList();
 
 	if (strcmp(cmdList->applicationType, "wordcount") == 0) {
 
 		map(cmdList->numMaps, "wordcount");
+		reduce(cmdList->numReduce, "wordcount");
 
 	}
 
