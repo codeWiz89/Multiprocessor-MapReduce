@@ -72,13 +72,16 @@ void parseArgs(int argc, char *argv[]);
 void map(int numMaps, char* applicationType);
 void reduce(int numReduce, char* applicationType);
 void getFilesToProcess(char* dirName);
-void wordCount_map(int numMaps);
-void wordCount_reduce(int numReduce);
-void* wordCount_mapH(void* args);
 void printFileList();
-void* wordCount_reduceH(void* args);
+
+void wordCount_map(int numMaps);
+void* wordCount_mapH(void* args);
+void wordCount_reduce(int numReduce);
+void* wordCount_reduceH_M(void* args);
 void* wordCount_reduceH_S();
 int sort_by_name(wordNode*a, wordNode* b);
+
+void intSort_map(int numMaps);
 
 pthread_mutex_t cd_lock;
 
@@ -124,6 +127,11 @@ void map(int numMaps, char* applicationType) {
 
 		wordCount_map(numMaps);
 	}
+
+	else {
+
+		intSort_map(numMaps);
+	}
 }
 
 void reduce(int numReduce, char* applicationType) {
@@ -144,16 +152,15 @@ void getFilesToProcess(char* dirName) {
 
 		while ((file = readdir(dir)) != NULL) {
 
-			//	printf("%s\n", file->d_name);
-
 			if (file->d_type == DT_REG) {
 
 				if (filesHead == NULL) {
 
 					filesHead = malloc(sizeof(fileNode));
-					strcpy(filesHead->filename, "wordcount/");
+					memset(filesHead->filename, 0, 50);
+					strcpy(filesHead->filename, dirName);
+					strcat(filesHead->filename, "/");
 					strcat(filesHead->filename, file->d_name);
-					//	strcpy(filesHead->filename, file->d_name);
 				}
 
 				else {
@@ -169,8 +176,9 @@ void getFilesToProcess(char* dirName) {
 
 					}
 
-					//strcpy(toAdd->filename, file->d_name);
-					strcpy(toAdd->filename, "wordcount/");
+					memset(toAdd->filename, 0, 50);
+					strcpy(toAdd->filename, dirName);
+					strcat(toAdd->filename, "/");
 					strcat(toAdd->filename, file->d_name);
 					prev->next = toAdd;
 				}
@@ -180,7 +188,7 @@ void getFilesToProcess(char* dirName) {
 		closedir(dir);
 	}
 
-//	printFileList();
+	printFileList();
 
 }
 
@@ -200,6 +208,7 @@ void wordCount_map(int numMaps) {
 		argsNode* tmpArgs = malloc(sizeof(argsNode));
 		wordNode* temp = NULL;
 
+		memset(tmpArgs->fileName, 0, sizeof(tmpArgs->fileName));
 		strcpy(tmpArgs->fileName, ptr->filename);
 		tmpArgs->wordHMap = temp;
 
@@ -220,7 +229,6 @@ void wordCount_map(int numMaps) {
 
 				prev = ptr;
 				ptr = ptr->next;
-
 			}
 
 			prev->next = tmpArgs;
@@ -279,9 +287,9 @@ void* wordCount_mapH(void* args) {
 
 		int len = strlen(line);
 
-		if (len > 0 && line[len-1] == '\n') {
+		if (len > 0 && line[len - 1] == '\n') {
 
-			line[len-1] = '\0';
+			line[len - 1] = '\0';
 		}
 
 		word = strtok(line, " ");
@@ -359,7 +367,7 @@ void wordCount_reduce(int numReduce) {
 
 		for (i = 0; i < threads; i++) {
 
-			ret = pthread_create(&thread[i], NULL, wordCount_reduceH, Aptr);
+			ret = pthread_create(&thread[i], NULL, wordCount_reduceH_M, Aptr);
 
 			if (ret != 0) {
 
@@ -401,7 +409,7 @@ void* wordCount_reduceH_S() {
 	wordNode* tmpPtr;
 	wordNode* toFind = NULL;
 
-	while(Aptr != NULL) {
+	while (Aptr != NULL) {
 
 		wordNode* tmpMap = Aptr->wordHMap;
 
@@ -435,15 +443,26 @@ void* wordCount_reduceH_S() {
 	return 0;
 }
 
-void* wordCount_reduceH(void* args) {
-
+void* wordCount_reduceH_M(void* args) {
 
 	return 0;
 }
 
 int sort_by_name(wordNode*a, wordNode* b) {
 
-  return strcmp(a->string, b->string);
+	return strcmp(a->string, b->string);
+}
+
+void intSort_map(int numMaps) {
+
+	getFilesToProcess("sort");
+
+	int i;
+	int ret = 0;
+	int threads = numMaps;
+	pthread_t* thread = malloc(sizeof(pthread_t) * threads);
+
+
 }
 
 void printCommandList() {
@@ -483,6 +502,12 @@ int main(int argc, char *argv[]) {
 
 		map(cmdList->numMaps, "wordcount");
 		reduce(cmdList->numReduce, "wordcount");
+
+	}
+
+	else {
+
+		map(cmdList->numMaps, "sort");
 
 	}
 
