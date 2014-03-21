@@ -14,7 +14,6 @@
 #include "uthash.h"
 
 typedef struct commands commandList;
-commandList* cmdList = NULL;
 
 struct commands {
 
@@ -26,6 +25,7 @@ struct commands {
 	char outFile[50];					// output file name
 
 };
+commandList* cmdList = NULL;
 
 typedef struct word wordNode;
 
@@ -36,17 +36,40 @@ struct word {
 
 	UT_hash_handle hh;
 };
-wordNode* finalMap = NULL;
+wordNode* wFinalMap = NULL;
 
-typedef struct alphaChar alphaCharNode;
+typedef struct args argsNode;
 
-struct alphaChar {
+struct args {
 
-	char c;
-	int index;
+	char fileName[50];
+	wordNode* wordHMap;
+	argsNode* next;
+
+};
+argsNode* argsHead = NULL;
+
+typedef struct intNode intNode;
+
+struct intNode {
+
+	int num;
+	int freq;
 
 	UT_hash_handle hh;
 };
+intNode* iFinalMap = NULL;
+
+typedef struct intArgs intArgsNode;
+
+struct intArgs {
+
+	char fileName[50];
+	intNode* intHMap;
+	intArgsNode* next;
+
+};
+intArgsNode* intArgsHead = NULL;
 
 typedef struct file fileNode;
 fileNode* filesHead = NULL;
@@ -55,17 +78,6 @@ struct file {
 
 	char filename[50];
 	fileNode* next;
-};
-
-typedef struct args argsNode;
-argsNode* argsHead = NULL;
-
-struct args {
-
-	char fileName[50];
-	wordNode* wordHMap;
-	argsNode* next;
-
 };
 
 void parseArgs(int argc, char *argv[]);
@@ -81,6 +93,7 @@ void* wordCount_reduceH(void* args);
 int sort_by_name(wordNode*a, wordNode* b);
 
 void intSort_map(int numMaps);
+void* intSort_mapH(void* args);
 
 pthread_mutex_t cd_lock;
 
@@ -265,7 +278,6 @@ void wordCount_map(int numMaps) {
 
 		Aptr = Aptr->next;
 	}
-
 }
 
 void* wordCount_mapH(void* args) {
@@ -358,7 +370,7 @@ void wordCount_reduce(int numReduce) {
 		pthread_join(thread[i], NULL);
 	}
 
-	HASH_SRT(hh, finalMap, sort_by_name);
+	HASH_SRT(hh, wFinalMap, sort_by_name);
 
 	printf("\n");
 	printf("\n");
@@ -366,7 +378,7 @@ void wordCount_reduce(int numReduce) {
 
 	wordNode* tmpS;
 
-	for (tmpS = finalMap; tmpS != NULL; tmpS = tmpS->hh.next) {
+	for (tmpS = wFinalMap; tmpS != NULL; tmpS = tmpS->hh.next) {
 
 		printf("%s %d\n", tmpS->string, tmpS->freq);
 
@@ -389,7 +401,7 @@ void* wordCount_reduceH(void* args) {
 
 		char* word = tmpPtr->string;
 
-		HASH_FIND_STR(finalMap, word, toFind);
+		HASH_FIND_STR(wFinalMap, word, toFind);
 
 		if (toFind) {
 
@@ -403,7 +415,7 @@ void* wordCount_reduceH(void* args) {
 			strcpy(toAdd->string, tmpPtr->string);
 			toAdd->freq = tmpPtr->freq;
 
-			HASH_ADD_STR(finalMap, string, toAdd);
+			HASH_ADD_STR(wFinalMap, string, toAdd);
 		}
 	}
 
@@ -419,12 +431,127 @@ int sort_by_name(wordNode*a, wordNode* b) {
 
 void intSort_map(int numMaps) {
 
-	getFilesToProcess("sort");
-
 	int i;
 	int ret = 0;
 	int threads = numMaps;
 	pthread_t* thread = malloc(sizeof(pthread_t) * threads);
+
+	fileNode* ptr = filesHead;
+
+	for (i = 0; i < threads; i++) {
+
+		intArgsNode* tmpArgs = malloc(sizeof(intArgsNode));
+		intNode* temp = NULL;
+
+		memset(tmpArgs->fileName, 0, sizeof(tmpArgs->fileName));
+		strcpy(tmpArgs->fileName, ptr->filename);
+		tmpArgs->intHMap = temp;
+
+		if (intArgsHead == NULL) {
+
+			intArgsHead = tmpArgs;
+			intArgsHead->next = NULL;
+		}
+
+		else {
+
+			intArgsNode* ptr = intArgsHead;
+			intArgsNode* prev = NULL;
+
+			while (ptr != NULL) {
+
+				prev = ptr;
+				ptr = ptr->next;
+			}
+
+			prev->next = tmpArgs;
+		}
+
+		ret = pthread_create(&thread[i], NULL, intSort_mapH, tmpArgs);
+
+		if (ret != 0) {
+
+			printf("Create pthread error!\n");
+			exit(1);
+		}
+
+		ptr = ptr->next;
+	}
+
+	for (i = 0; i < threads; i++) {
+
+		pthread_join(thread[i], NULL);
+	}
+
+	intArgsNode* Iptr = intArgsHead;
+
+	while (Iptr != NULL) {
+
+		intNode* ptr;
+
+		printf("********filename: %s********\n", Iptr->fileName);
+
+		for (ptr = Iptr->intHMap; ptr != NULL; ptr = ptr->hh.next) {
+
+			printf("int: %d\n", ptr->num);
+
+		}
+
+		printf("********filename: %s********\n", Iptr->fileName);
+
+		Iptr = Iptr->next;
+	}
+
+}
+
+void* intSort_mapH(void* args) {
+
+	intArgsNode* tempArgs = (intArgsNode*) args;
+
+	char* fileName = tempArgs->fileName;
+	intNode* intHM = tempArgs->intHMap;
+
+	FILE* file = fopen(fileName, "r");
+	char line[1000] = { 0 };
+	char* word;
+	intNode* toFind;
+
+	while (!feof(file)) {
+
+		fgets(line, sizeof(line), file);
+
+		int len = strlen(line);
+
+		if (len > 0 && line[len - 1] == '\n') {
+
+			line[len - 1] = '\0';
+		}
+
+		word = strtok(line, " ");
+
+		while (word != NULL) {
+
+			int tempNum = atoi(word);
+
+			HASH_FIND_INT(intHM, &tempNum, toFind);
+
+			if (!toFind) {
+
+				intNode* toAdd = malloc(sizeof(intNode));
+				toAdd->num = tempNum;
+
+				HASH_ADD_INT(intHM, num, toAdd);
+			}
+
+			word = strtok(NULL, " ");
+		}
+
+		memset(line, 0, 1000);
+	}
+
+	tempArgs->intHMap = intHM;
+
+	return 0;
 
 }
 
