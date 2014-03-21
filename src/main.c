@@ -77,8 +77,7 @@ void printFileList();
 void wordCount_map(int numMaps);
 void* wordCount_mapH(void* args);
 void wordCount_reduce(int numReduce);
-void* wordCount_reduceH_M(void* args);
-void* wordCount_reduceH_S();
+void* wordCount_reduceH(void* args);
 int sort_by_name(wordNode*a, wordNode* b);
 
 void intSort_map(int numMaps);
@@ -194,7 +193,7 @@ void getFilesToProcess(char* dirName) {
 
 void wordCount_map(int numMaps) {
 
-	getFilesToProcess("wordcount");
+//	getFilesToProcess("wordcount");
 
 	int i;
 	int ret = 0;
@@ -336,52 +335,27 @@ void* wordCount_mapH(void* args) {
 void wordCount_reduce(int numReduce) {
 
 	argsNode* Aptr = argsHead;
+
 	int i, ret;
+	int threads = numReduce;
+	pthread_t* thread = malloc(sizeof(pthread_t) * threads);
 
-	if (numReduce == 1) {
+	for (i = 0; i < threads; i++) {
 
-		int threads = numReduce;
-		pthread_t* thread = malloc(sizeof(pthread_t) * threads);
+		ret = pthread_create(&thread[i], NULL, wordCount_reduceH, Aptr);
 
-		for (i = 0; i < threads; i++) {
+		if (ret != 0) {
 
-			ret = pthread_create(&thread[i], NULL, wordCount_reduceH_S, NULL);
-
-			if (ret != 0) {
-
-				printf("Create pthread error!\n");
-				exit(1);
-			}
+			printf("Create pthread error!\n");
+			exit(1);
 		}
 
-		for (i = 0; i < threads; i++) {
-
-			pthread_join(thread[i], NULL);
-		}
+		Aptr = Aptr->next;
 	}
 
-	else {
+	for (i = 0; i < threads; i++) {
 
-		int threads = numReduce;
-		pthread_t* thread = malloc(sizeof(pthread_t) * threads);
-
-		for (i = 0; i < threads; i++) {
-
-			ret = pthread_create(&thread[i], NULL, wordCount_reduceH_M, Aptr);
-
-			if (ret != 0) {
-
-				printf("Create pthread error!\n");
-				exit(1);
-			}
-
-			Aptr = Aptr->next;
-		}
-
-		for (i = 0; i < threads; i++) {
-
-			pthread_join(thread[i], NULL);
-		}
+		pthread_join(thread[i], NULL);
 	}
 
 	HASH_SRT(hh, finalMap, sort_by_name);
@@ -401,49 +375,39 @@ void wordCount_reduce(int numReduce) {
 	printf("******done printing final map******\n");
 }
 
-void* wordCount_reduceH_S() {
+void* wordCount_reduceH(void* args) {
 
 	pthread_mutex_lock(&cd_lock);
 
-	argsNode* Aptr = argsHead;
+	argsNode* tempArgs = (argsNode*) args;
+	wordNode* wordHM = tempArgs->wordHMap;
+
 	wordNode* tmpPtr;
 	wordNode* toFind = NULL;
 
-	while (Aptr != NULL) {
+	for (tmpPtr = wordHM; tmpPtr != NULL; tmpPtr = tmpPtr->hh.next) {
 
-		wordNode* tmpMap = Aptr->wordHMap;
+		char* word = tmpPtr->string;
 
-		for (tmpPtr = tmpMap; tmpPtr != NULL; tmpPtr = tmpPtr->hh.next) {
+		HASH_FIND_STR(finalMap, word, toFind);
 
-			char* word = tmpPtr->string;
+		if (toFind) {
 
-			HASH_FIND_STR(finalMap, word, toFind);
+			toFind->freq += 1;
 
-			if (toFind) {
-
-				toFind->freq += 1;
-
-			}
-
-			else {
-
-				wordNode* toAdd = malloc(sizeof(wordNode));
-				strcpy(toAdd->string, tmpPtr->string);
-				toAdd->freq = tmpPtr->freq;
-
-				HASH_ADD_STR(finalMap, string, toAdd);
-			}
 		}
 
-		Aptr = Aptr->next;
+		else {
+
+			wordNode* toAdd = malloc(sizeof(wordNode));
+			strcpy(toAdd->string, tmpPtr->string);
+			toAdd->freq = tmpPtr->freq;
+
+			HASH_ADD_STR(finalMap, string, toAdd);
+		}
 	}
 
 	pthread_mutex_unlock(&cd_lock);
-
-	return 0;
-}
-
-void* wordCount_reduceH_M(void* args) {
 
 	return 0;
 }
@@ -461,8 +425,6 @@ void intSort_map(int numMaps) {
 	int ret = 0;
 	int threads = numMaps;
 	pthread_t* thread = malloc(sizeof(pthread_t) * threads);
-
-
 
 }
 
@@ -499,10 +461,23 @@ int main(int argc, char *argv[]) {
 	parseArgs(argc, argv);
 //	printCommandList();
 
+	getFilesToProcess(cmdList->applicationType);
+	int fileCount = 0;
+	fileNode* ptr = filesHead;
+
+	while (ptr != NULL) {
+
+		fileCount++;
+		ptr = ptr->next;
+	}
+
 	if (strcmp(cmdList->applicationType, "wordcount") == 0) {
 
-		map(cmdList->numMaps, "wordcount");
-		reduce(cmdList->numReduce, "wordcount");
+		//	map(cmdList->numMaps, "wordcount");
+		//	reduce(cmdList->numReduce, "wordcount");
+
+		map(fileCount, "wordcount");
+		reduce(fileCount, "wordcount");
 
 	}
 
