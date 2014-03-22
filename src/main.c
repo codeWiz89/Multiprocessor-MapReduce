@@ -58,7 +58,6 @@ struct intNode {
 
 	UT_hash_handle hh;
 };
-intNode* iFinalMap = NULL;
 
 typedef struct intArgs intArgsNode;
 
@@ -94,6 +93,9 @@ int sort_by_name(wordNode*a, wordNode* b);
 
 void intSort_map(int numMaps);
 void* intSort_mapH(void* args);
+void intSort_reduce(int numReduce);
+void quickSort(int a[], int l, int r);
+int partition(int a[], int l, int r);
 
 pthread_mutex_t cd_lock;
 
@@ -151,6 +153,11 @@ void reduce(int numReduce, char* applicationType) {
 	if (strcmp(applicationType, "wordcount") == 0) {
 
 		wordCount_reduce(numReduce);
+	}
+
+	else {
+
+		intSort_reduce(numReduce);
 	}
 
 }
@@ -372,19 +379,33 @@ void wordCount_reduce(int numReduce) {
 
 	HASH_SRT(hh, wFinalMap, sort_by_name);
 
-	printf("\n");
-	printf("\n");
-	printf("******printing final map******\n");
+	/*	printf("\n");
+	 printf("\n");
+	 printf("******printing final map******\n");
+
+	 wordNode* tmpS;
+
+	 for (tmpS = wFinalMap; tmpS != NULL; tmpS = tmpS->hh.next) {
+
+	 printf("%s %d\n", tmpS->string, tmpS->freq);
+
+	 }
+
+	 printf("******done printing final map******\n"); */
+
+	FILE* outputFile = fopen(cmdList->outFile, "w+");
 
 	wordNode* tmpS;
 
 	for (tmpS = wFinalMap; tmpS != NULL; tmpS = tmpS->hh.next) {
 
-		printf("%s %d\n", tmpS->string, tmpS->freq);
+		fprintf(outputFile, "%s ", tmpS->string);
+		fprintf(outputFile, "%d ", tmpS->freq);
+
+		fprintf(outputFile, "\n");
 
 	}
 
-	printf("******done printing final map******\n");
 }
 
 void* wordCount_reduceH(void* args) {
@@ -555,6 +576,116 @@ void* intSort_mapH(void* args) {
 
 }
 
+void intSort_reduce(int numReduce) {
+
+	intArgsNode* Iptr = intArgsHead;
+
+	int i;
+	int threads = numReduce;
+
+	int arrayLength = 0;
+
+	for (i = 0; i < threads; i++) {
+
+		arrayLength += HASH_COUNT(Iptr->intHMap);
+		Iptr = Iptr->next;
+	}
+
+	int* allNums = malloc(sizeof(int) * arrayLength);
+	Iptr = intArgsHead;
+
+	intNode* ptr = NULL;
+	int insertCount = 0;
+
+	while (Iptr != NULL) {
+
+		for (ptr = Iptr->intHMap; ptr != NULL; ptr = ptr->hh.next) {
+
+			allNums[insertCount] = ptr->num;
+			insertCount++;
+
+		}
+
+		Iptr = Iptr->next;
+	}
+
+	printf("****Unsorted****\n");
+
+	for (i = 0; i < arrayLength; i++) {
+
+		printf("%d ", allNums[i]);
+
+	}
+
+	printf("\n");
+	printf("****Unsorted****\n");
+
+	printf("****Sorted****\n");
+
+	quickSort(allNums, 0, arrayLength);
+
+	for (i = 0; i < arrayLength; i++) {
+
+		printf("%d ", allNums[i]);
+
+	}
+
+	printf("\n");
+	printf("****Sorted****\n");
+
+	FILE* outputFile = fopen(cmdList->outFile, "w+");
+
+	for (i = 0; i < arrayLength; i++) {
+
+		fprintf(outputFile, "%d", allNums[i]);
+		fprintf(outputFile, "\n");
+
+	}
+
+	free(allNums);
+
+}
+
+void quickSort(int a[], int l, int r) {
+
+	int j;
+
+	if (l < r) {
+		// divide and conquer
+		j = partition(a, l, r);
+		quickSort(a, l, j - 1);
+		quickSort(a, j + 1, r);
+	}
+}
+
+int partition(int a[], int l, int r) {
+
+	int pivot, i, j, t;
+	pivot = a[l];
+	i = l;
+	j = r + 1;
+
+	while (1) {
+		do
+			++i;
+		while (a[i] <= pivot && i <= r);
+		do
+			--j;
+		while (a[j] > pivot);
+		if (i >= j)
+			break;
+		t = a[i];
+		a[i] = a[j];
+		a[j] = t;
+	}
+
+	t = a[l];
+	a[l] = a[j];
+	a[j] = t;
+
+	return j;
+}
+
 void printCommandList() {
 
 	printf("Application type: %s\n", cmdList->applicationType);
@@ -574,6 +705,37 @@ void printFileList() {
 		printf("%s\n", ptr->filename);
 		ptr = ptr->next;
 	}
+}
+
+void clearAll() {
+
+	if (wFinalMap != NULL) {
+
+		HASH_CLEAR(hh, wFinalMap);
+	}
+
+	if (intArgsHead != NULL) {
+
+		intArgsNode* ptr = intArgsHead;
+
+		while (ptr != NULL) {
+
+			intNode* temp = ptr->intHMap;
+			HASH_CLEAR(hh, temp);
+		}
+	}
+
+	if (argsHead != NULL) {
+
+		argsNode* ptr = argsHead;
+
+		while (ptr != NULL) {
+
+			wordNode* temp = ptr->wordHMap;
+			HASH_CLEAR(hh, temp);
+		}
+	}
+
 }
 
 int main(int argc, char *argv[]) {
@@ -610,9 +772,12 @@ int main(int argc, char *argv[]) {
 
 	else {
 
-		map(cmdList->numMaps, "sort");
+		map(fileCount, "sort");
+		reduce(fileCount, "sort");
 
 	}
+
+	clearAll();
 
 	return 0;
 }
